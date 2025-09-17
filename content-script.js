@@ -253,11 +253,47 @@
   }
 
   function getDynamicActiveNodeIds() {
-    const innerDoc = document.querySelector('iframe[src*="shell"]')
-      ?.contentWindow?.document;
-    if (!innerDoc) return [];
+    // Try multiple iframe selectors to find the content tree
+    const iframeSelectors = [
+      'iframe[src*="shell"]',
+      'iframe[src*="content"]',
+      'iframe[name*="shell"]',
+      'iframe[name*="content"]',
+    ];
 
-    const activeNodes = innerDoc.querySelectorAll(".scContentTreeNodeNormal");
+    let innerDoc = null;
+    for (const selector of iframeSelectors) {
+      const iframe = document.querySelector(selector);
+      if (iframe) {
+        try {
+          innerDoc = iframe.contentWindow?.document;
+          if (innerDoc) break;
+        } catch (e) {
+          continue;
+        }
+      }
+    }
+
+    if (!innerDoc) {
+      console.log("Could not find content tree iframe document");
+      return [];
+    }
+
+    // Try multiple node selectors
+    const nodeSelectors = [
+      ".scContentTreeNodeNormal",
+      ".scContentTreeNode",
+      "[id^='Tree_Node_']",
+    ];
+
+    let activeNodes = [];
+    for (const selector of nodeSelectors) {
+      activeNodes = innerDoc.querySelectorAll(selector);
+      if (activeNodes.length > 0) break;
+    }
+
+    console.log(`Found ${activeNodes.length} tree nodes`);
+
     return [...activeNodes]
       .map((node) =>
         node.id?.startsWith("Tree_Node_")
@@ -311,7 +347,6 @@
     if (dynamicIds.length === 0) {
       return {
         success: false,
-        message: "No active tree nodes found",
         count: 0,
       };
     }
@@ -377,16 +412,67 @@
   }
 
   function getCheckedItems() {
-    const innerDoc = document.querySelector('iframe[src*="shell"]')
-      ?.contentWindow?.document;
-    if (!innerDoc) return [];
+    // Try multiple iframe selectors to find the content tree
+    const iframeSelectors = [
+      'iframe[src*="shell"]',
+      'iframe[src*="content"]',
+      'iframe[name*="shell"]',
+      'iframe[name*="content"]',
+    ];
+
+    let innerDoc = null;
+    for (const selector of iframeSelectors) {
+      const iframe = document.querySelector(selector);
+      if (iframe) {
+        try {
+          innerDoc = iframe.contentWindow?.document;
+          if (innerDoc) break;
+        } catch (e) {
+          continue;
+        }
+      }
+    }
+
+    if (!innerDoc) {
+      console.log(
+        "Could not find content tree iframe document for checked items"
+      );
+      return [];
+    }
 
     const checkedBoxes = innerDoc.querySelectorAll(
       ".tree-node-checkbox:checked"
     );
+
+    console.log(`Found ${checkedBoxes.length} checked items`);
+
     return [...checkedBoxes]
       .map((checkbox) => checkbox.getAttribute("data-node-id"))
       .filter(Boolean);
+  }
+
+  function clearAllCheckboxes() {
+    const innerDoc = document.querySelector('iframe[src*="shell"]')
+      ?.contentWindow?.document;
+    if (!innerDoc) {
+      console.log("Could not find shell iframe document to clear checkboxes");
+      return 0;
+    }
+
+    const allCheckboxes = innerDoc.querySelectorAll(".tree-node-checkbox");
+    let clearedCount = 0;
+
+    allCheckboxes.forEach((checkbox) => {
+      if (checkbox.checked) {
+        checkbox.checked = false;
+        checkbox.setAttribute("data-checked", "false");
+        checkbox.setAttribute("data-covered", "false");
+        clearedCount++;
+      }
+    });
+
+    console.log(`Cleared ${clearedCount} checkboxes`);
+    return clearedCount;
   }
 
   function getNextWorkflowState(currentStateId) {
@@ -422,9 +508,18 @@
       const queries = batch
         .map((id, idx) => {
           const cleanId = id.replace(/[{}]/g, "");
-          return `item${idx}: item(where: {itemId: "${cleanId}"}) {
-          workflow { workflowState { stateId displayName } }
-        }`;
+          return `item${idx}: item(where: {itemId: "${cleanId}"}) 
+              {
+                workflow{
+                  workflow{
+                    displayName
+                  }
+                  workflowState{
+                    stateId
+                    displayName
+                  }
+                }
+              }`;
         })
         .join("\n");
 
@@ -449,6 +544,7 @@
         return batch.map((id, idx) => {
           const item = data[`item${idx}`];
           const currentWorkflowState = item?.workflow?.workflowState;
+          const currentWorkflow = item?.workflow?.workflow?.displayName;
           let nextWorkflowState = null;
 
           if (currentWorkflowState?.stateId) {
@@ -467,6 +563,7 @@
               displayName: "No next state",
               id: null,
             },
+            currentWorkflow: currentWorkflow,
           };
         });
       } catch {
@@ -483,7 +580,6 @@
       const batchResults = await runWorkflowBatch(slice);
       workflowData.push(...batchResults);
     }
-
     return workflowData;
   }
 
@@ -496,17 +592,31 @@
 
     async function runUpdateBatch(batch) {
       const validItems = [];
+      const skippedItems = [];
       const mutations = batch
         .map((item, idx) => {
           const cleanId = item.id.replace(/[{}]/g, "");
           const currentStateId = item.currentWorkflowState?.stateId;
+          const currentWorkflow = item.currentWorkflow;
 
-          // Skip if already approved
+          // Skip if already approved or has no workflow set
           if (
-            currentStateId &&
-            currentStateId.replace(/[{}]/g, "").toUpperCase() ===
-              WORKFLOW_STATES.APPROVED.id.replace(/[{}]/g, "").toUpperCase()
+            !currentWorkflow ||
+            (currentStateId &&
+              currentStateId.replace(/[{}]/g, "").toUpperCase() ===
+                WORKFLOW_STATES.APPROVED.id.replace(/[{}]/g, "").toUpperCase())
           ) {
+            // Track skipped items
+            skippedItems.push({
+              id: item.id,
+              success: false,
+              skipped: true,
+              reason: !currentWorkflow
+                ? "No workflow assigned"
+                : "Already approved",
+              path: "Unknown",
+              currentState: item.currentWorkflowState?.displayName || "Unknown",
+            });
             return null;
           }
 
@@ -531,7 +641,7 @@
         .filter(Boolean)
         .join("\n");
 
-      if (!mutations) return [];
+      if (!mutations) return skippedItems; // Return skipped items if no mutations
 
       try {
         const res = await fetch(
@@ -551,7 +661,7 @@
         );
 
         const { data = {} } = await res.json();
-        return validItems.map((item, idx) => {
+        const updateResults = validItems.map((item, idx) => {
           const updateResult = data[`update${idx}`];
           return {
             id: item.id,
@@ -564,8 +674,11 @@
             currentState: item.currentWorkflowState?.displayName || "Unknown",
           };
         });
+
+        // Combine update results with skipped items
+        return [...updateResults, ...skippedItems];
       } catch {
-        return validItems.map((item) => ({
+        const failedResults = validItems.map((item) => ({
           id: item.id,
           success: false,
           error: "Update failed",
@@ -575,6 +688,9 @@
             WORKFLOW_STATES.DRAFT.displayName,
           currentState: item.currentWorkflowState?.displayName || "Unknown",
         }));
+
+        // Combine failed results with skipped items
+        return [...failedResults, ...skippedItems];
       }
     }
 
@@ -590,25 +706,61 @@
   async function handleWorkflowQuery() {
     const checkedIds = getCheckedItems();
     if (checkedIds.length === 0) {
-      return { success: false, message: "No checked items found", count: 0 };
+      const result = {
+        success: false,
+        count: 0,
+      };
+
+      return result;
     }
 
     try {
       const workflowData = await queryWorkflowStates(checkedIds);
       const updateResults = await updateWorkflowStates(workflowData);
 
-      return {
+      // Clear all checkboxes after successful workflow update
+      const clearedCount = clearAllCheckboxes();
+
+      const result = {
         success: true,
         count: checkedIds.length,
         workflowData: workflowData,
         updateResults: updateResults,
+        clearedCheckboxes: clearedCount,
       };
-    } catch {
-      return {
+
+      // Show notification with workflow update results
+      const successCount = updateResults.filter((r) => r.success).length;
+      const failedCount = updateResults.filter(
+        (r) => !r.success && !r.skipped
+      ).length;
+      const skippedCount = updateResults.filter((r) => r.skipped).length;
+
+      createNotificationPopup({
+        type: successCount > 0 ? "success" : "error",
+        title: "Workflow Update Complete",
+        message: `Processed ${checkedIds.length} items. ${successCount} successful, ${failedCount} failed, ${skippedCount} skipped.`,
+        updateResults: updateResults,
+        skippedCount: skippedCount,
+      });
+
+      return result;
+    } catch (error) {
+      const result = {
         success: false,
         message: "Error querying workflow states",
         count: 0,
       };
+
+      // Show notification for error
+      createNotificationPopup({
+        type: "error",
+        title: "Workflow Update Error",
+        message:
+          "Error occurred while processing workflow states. Please try again.",
+      });
+
+      return result;
     }
   }
 
@@ -752,7 +904,9 @@
     const successCount =
       data.updateResults?.filter((r) => r.success).length || 0;
     const failedCount =
-      data.updateResults?.filter((r) => !r.success).length || 0;
+      data.updateResults?.filter((r) => !r.success && !r.skipped).length || 0;
+    const skippedCount =
+      data.updateResults?.filter((r) => r.skipped).length || 0;
 
     popup.innerHTML = `
       <div class="notification-header">
@@ -773,10 +927,23 @@
               <span>❌ Failed Updates:</span>
               <span class="update-failed">${failedCount}</span>
             </div>
+            ${
+              skippedCount > 0
+                ? `
+            <div class="update-item">
+              <span>⏭️ Skipped Items:</span>
+              <span style="color: #ff9800; font-weight: bold;">${skippedCount}</span>
+            </div>
+            `
+                : ""
+            }
             <div class="update-item">
               <span><strong>Total Processed:</strong></span>
-              <span><strong>${successCount + failedCount}</strong></span>
+              <span><strong>${
+                successCount + failedCount + skippedCount
+              }</strong></span>
             </div>
+
           </div>
         `
             : ""
