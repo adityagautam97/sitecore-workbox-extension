@@ -1,12 +1,31 @@
+// Settings script - modular version without ES6 imports
 document.addEventListener("DOMContentLoaded", function () {
+  'use strict';
+
+  const ENCRYPTION_KEY = "FhxImvR3U4uIZUSR";
+
+  // Encryption functions
+  function encryptString(str) {
+    if (!str) return "";
+    return CryptoJS.AES.encrypt(str, ENCRYPTION_KEY).toString();
+  }
+
+  function decryptString(encryptedStr) {
+    if (!encryptedStr) return "";
+    try {
+      const bytes = CryptoJS.AES.decrypt(encryptedStr, ENCRYPTION_KEY);
+      return bytes.toString(CryptoJS.enc.Utf8);
+    } catch (e) {
+      console.error("Decryption error:", e);
+      return "";
+    }
+  }
+
   const saveSettingsBtn = document.getElementById("save-settings");
   const resetSettingsBtn = document.getElementById("reset-keys");
-  const addDynamicCheckboxesBtn = document.getElementById(
-    "add-dynamic-checkboxes"
-  );
+  const addDynamicCheckboxesBtn = document.getElementById("add-dynamic-checkboxes");
   const queryWorkflowBtn = document.getElementById("query-workflow-states");
-  const statusMessage = document.getElementById("status-message");
-  const ENCRYPTION_KEY = "FhxImvR3U4uIZUSR";
+
   // Load saved settings
   loadSettings();
 
@@ -88,23 +107,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
   }
-  // Encryption function
-  function encryptString(str) {
-    if (!str) return "";
-    return CryptoJS.AES.encrypt(str, ENCRYPTION_KEY).toString();
-  }
-
-  // Decryption function
-  function decryptString(encryptedStr) {
-    if (!encryptedStr) return "";
-    try {
-      const bytes = CryptoJS.AES.decrypt(encryptedStr, ENCRYPTION_KEY);
-      return bytes.toString(CryptoJS.enc.Utf8);
-    } catch (e) {
-      console.error("Decryption error:", e);
-      return "";
-    }
-  }
 
   // Add dynamic checkboxes functionality
   addDynamicCheckboxesBtn.addEventListener("click", async function () {
@@ -137,8 +139,10 @@ document.addEventListener("DOMContentLoaded", function () {
               `Added checkboxes to ${response.count} active nodes`,
               "success"
             );
-          } else {
+          } else if(response && response.error){
             showStatus(response?.message || "No active nodes found", "error");
+          } else {
+            showStatus(response?.message || "Finding active nodes");
           }
         }
       );
@@ -206,8 +210,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
               }
             );
-          } else {
+          } else if(response && response.error){
             showStatus(response?.message || "No checked items found", "error");
+          } else {
+            showStatus(response?.message || "Finding checked items");
           }
         }
       );
@@ -230,6 +236,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     statusEl.textContent = message;
     statusEl.className = `status ${type}`;
+    statusEl.style.display = "block";
 
     // Hide after 3 seconds
     setTimeout(() => {

@@ -21,7 +21,17 @@
     },
     "content_scripts": [
         {
-            "js": ["crypto-js-min.js","content-script.js"],
+            "js": [
+                "crypto-js-min.js",
+                "src/config.js",
+                "src/utils.js",
+                "src/api.js",
+                "src/workflow.js",
+                "src/checkbox.js",
+                "src/notification.js",
+                "src/workbox.js",
+                "content-script.js"
+            ],
             "matches": [
                 "*://*/sitecore/shell*",
                 "*://*/sitecore/client/*"
