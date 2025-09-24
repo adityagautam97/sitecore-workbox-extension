@@ -12,7 +12,6 @@ Sitecore XM Cloud lacks several critical productivity features that content edit
 
 - **No Item Path Visibility**: Understanding content structure and location
 - **Limited Workflow Management**: Bulk workflow operations are cumbersome  
-- **No Multi-Selection Tools**: Managing multiple items simultaneously
 
 Since customizing Sitecore XM Cloud is **not recommended**, this Chrome Extension provides a **non-invasive** way to enhance the interface directly in your browser.
 
