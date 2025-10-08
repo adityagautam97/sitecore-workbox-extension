@@ -99,15 +99,14 @@ window.SitecoreHelper.Utils = (function() {
     }
 
     const nodeSelectors = [
+      ".scContentTreeNodeActive",
       ".scContentTreeNodeNormal",
-      ".scContentTreeNode",
-      "[id^='Tree_Node_']",
     ];
 
     let activeNodes = [];
     for (const selector of nodeSelectors) {
-      activeNodes = innerDoc.querySelectorAll(selector);
-      if (activeNodes.length > 0) break;
+      const nodes = innerDoc.querySelectorAll(selector);
+      activeNodes.push(...nodes);
     }
 
     console.log(`Found ${activeNodes.length} tree nodes`);

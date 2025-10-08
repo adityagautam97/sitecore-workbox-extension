@@ -146,7 +146,7 @@
     });
 
     console.log(
-      "Sitecore XM Cloud Helper content script loaded (modular version)"
+      "Sitecore XM Cloud Helper content script loaded"
     );
   });
 })();

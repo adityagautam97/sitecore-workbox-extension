@@ -18,7 +18,6 @@ window.SitecoreHelper.Config = (function() {
     maxChecks: 10,
     graphQLFields: "path",
     encryptionKey: "FhxImvR3U4uIZUSR",
-    nodeClass: "scContentTreeNodeNormal",
     idPrefix: "Tree_Node_",
   };
 
